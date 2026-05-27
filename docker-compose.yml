@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: finware-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: finware
+      POSTGRES_PASSWORD: finware
+      POSTGRES_DB: finware
+    ports:
+      - "5432:5432"
+    volumes:
+      - finware_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finware"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  finware_db_data:
