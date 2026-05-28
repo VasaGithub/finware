@@ -1,0 +1,184 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── ENUMS ───────────────────────────────────────────────
+
+enum AccountType {
+  CHECKING
+  SAVINGS
+  CREDIT_CARD
+  INVESTMENT
+  CASH
+}
+
+enum TransactionSource {
+  MANUAL_UPLOAD
+  GMAIL
+  PSD2
+}
+
+enum CategorySource {
+  AI
+  RULE
+  MANUAL
+}
+
+enum SubscriptionFrequency {
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+enum RuleMatchType {
+  CONTAINS
+  REGEX
+  STARTS_WITH
+}
+
+enum ImportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+// ─── MODELS ──────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String?
+  createdAt    DateTime @default(now())
+
+  accounts      Account[]
+  categories    Category[]
+  imports       Import[]
+  rules         Rule[]
+  subscriptions Subscription[]
+}
+
+model Account {
+  id        String      @id @default(cuid())
+  userId    String
+  name      String
+  type      AccountType
+  currency  String      @default("EUR")
+  bankName  String?
+  balance   Decimal?    @db.Decimal(12, 2)
+  createdAt DateTime    @default(now())
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@index([userId])
+}
+
+model Transaction {
+  id                 String            @id @default(cuid())
+  accountId          String
+  date               DateTime
+  amount             Decimal           @db.Decimal(12, 2)
+  currency           String            @default("EUR")
+  description        String
+  rawData            Json?
+
+  categoryId         String?
+  subcategoryId      String?
+  categorySource     CategorySource    @default(AI)
+  categoryConfidence Float?
+
+  isSubscription     Boolean           @default(false)
+  subscriptionId     String?
+
+  source             TransactionSource
+  sourceRef          String?
+  importId           String?
+
+  fingerprint        String
+
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  account      Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  category     Category?     @relation("TransactionCategory", fields: [categoryId], references: [id], onDelete: SetNull)
+  subcategory  Category?     @relation("TransactionSubcategory", fields: [subcategoryId], references: [id], onDelete: SetNull)
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  import       Import?       @relation(fields: [importId], references: [id], onDelete: SetNull)
+
+  @@unique([accountId, fingerprint])
+  @@index([date])
+  @@index([categoryId])
+}
+
+model Category {
+  id            String   @id @default(cuid())
+  userId        String
+  name          String
+  parentId      String?
+  icon          String?
+  color         String?
+  budgetMonthly Decimal? @db.Decimal(12, 2)
+
+  user                 User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent               Category?     @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children             Category[]    @relation("CategoryHierarchy")
+  transactions         Transaction[] @relation("TransactionCategory")
+  transactionsAsSubcat Transaction[] @relation("TransactionSubcategory")
+  rules                Rule[]
+
+  @@index([userId])
+}
+
+model Subscription {
+  id             String                @id @default(cuid())
+  userId         String
+  merchantName   String
+  amount         Decimal               @db.Decimal(12, 2)
+  currency       String                @default("EUR")
+  frequency      SubscriptionFrequency
+  active         Boolean               @default(true)
+  detectedAt     DateTime              @default(now())
+  lastChargeDate DateTime?
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@index([userId])
+}
+
+model Rule {
+  id         String        @id @default(cuid())
+  userId     String
+  pattern    String
+  matchType  RuleMatchType
+  categoryId String
+  priority   Int           @default(0)
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Import {
+  id          String            @id @default(cuid())
+  userId      String
+  source      TransactionSource
+  filename    String?
+  status      ImportStatus      @default(PENDING)
+  metadata    Json?
+  startedAt   DateTime          @default(now())
+  completedAt DateTime?
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@index([userId])
+}
